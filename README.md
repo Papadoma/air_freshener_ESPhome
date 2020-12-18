@@ -24,17 +24,34 @@ The module is powered by the batteries of the air wick unit. We pick up power us
 Finally, 2 extra connections are required to operate the spray functionality; spray enable (enable_controller in yaml) and spray fire (trigger_spray in yaml)
 Both of these activate on LOW. Whilst the ESP8266 is disabled, the pins are kept in high impedance. Once awaken, the pins are set to HIGH on boot and then when the timing condition is met, are sequently set to LOW, before being set to HIGH again prior to disabling the ESP8266. 
 
-The logic inside yaml is simple. ESPhome is used as the base API.
-Once awaken, check in loop when the timing condition is met using the time from a local sntp server (running within HASS, or you could use any other)
+ESPhome is used as the base API. You will have to follow another tutorial if you want to learn how to flash any ESPHOME .yaml to an ESP device, but it is not that hard. 
+The logic inside yaml is simple. Once awaken, check in loop when the timing condition is met using the time from a local sntp server (running within HASS, or you could use any other)
 As long as we are not in ota_mode (more on that later), save the time locally and spray. Wait until as set amount of time has passed (10s using the uptime sensor) and as long as there's no motion, disable the chip.
 
-When it comes to sensors, there's an ADC (battery monitoring using A0), wifi signal, motion (binary)
+When it comes to sensors, there's an ADC (battery monitoring using A0), wifi signal, motion (binary).
 
-The switches are set to internal, as there is no real point exposing them to HASS.
+The switches are set to internal, as there is no real point exposing them to HASS. They are only used to manipulate the ESP8266 pins.
 
 For the MQTT, there are 2 messages that are of interest
 One that carries the ON/OFF payload for the ota_mode, which basically disables spraying and keeps the unit from disabling. You flick a switch in HASS and the next time it communicates with the MQTT server, it stays on. 
 The other carries the latest timestamp using a json message. 
+I suppose you could combine them but for now I kept them on seperate topics.
+
+Add this to your configuration.yaml file in HASS:
+
+switch:
+  - platform: mqtt
+    name: "Air freshener OTA mode"
+    payload_on: "ON"
+    payload_off: "OFF"
+    retain: True
+    command_topic: "bathroom/ota_mode"
+    icon: mdi:toggle-switch
+    availability_topic: "bathroom/status" 
+
+To have a switch that allows for setting the device in ota mode. 
+
+
 
 
 There are tons of improvements to be made, namely the use of an RTC module, using the onboard flash memory for storing the timestamp, setting more conditions to meet edge cases, optimizing wake on time etc.
