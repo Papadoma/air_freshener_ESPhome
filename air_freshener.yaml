@@ -1,0 +1,150 @@
+esphome:
+  name: air_freshener
+  platform: ESP8266
+  board: d1_mini
+  
+  on_boot:
+    priority: -10
+    then:
+      - delay: 1s
+      - lambda: !lambda |-
+          id(motion_sensor).publish_state(true);
+          ESP_LOGI("main", "Prev time: %d", id(timestamp));
+          ESP_LOGI("main", "Curr time: %d", id(sntp_time).utcnow().timestamp);
+  
+  on_loop:
+    then:
+      - lambda: !lambda |-
+          if (id(sntp_time).utcnow().is_valid()  &&  id(sntp_time).utcnow().timestamp - id(timestamp) >=300 && id(timestamp)!=0 ) {
+            
+            if(id(ota_mode))ESP_LOGI("main", "Prev time: %d", id(timestamp));
+            id(timestamp) = id(sntp_time).utcnow().timestamp;
+            if(id(ota_mode))ESP_LOGI("main", "Curr time: %d", id(timestamp));
+            
+            if(id(ota_mode)){
+              ESP_LOGI("main", "FIRE!");
+            }else{
+              id(enable_controller).turn_off();
+              delay(200);
+              id(trigger_spray).turn_off();
+              delay(800);
+              id(enable_controller).turn_on();
+              id(trigger_spray).turn_on();
+            }
+            id(mqtt_client).publish_json("bathroom/timestamp", [=](JsonObject &root) {
+              root["timestamp"] = id(timestamp);
+            }, 0, true);
+          }
+          if (id(uptime_sensor).state >= 10 && !id(motion_sensor).state && !id(ota_mode) ){
+            id(motion_sensor).publish_state(false);
+            delay(300);
+            id(keep_enabled).turn_off();
+          }
+      
+globals:
+  - id: timestamp
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: ota_mode
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+    
+wifi:
+  ssid: 
+  password: 
+  fast_connect: True
+  ap:
+    ssid: 
+    password: 
+  manual_ip:
+    static_ip: ???
+    gateway: ???
+    subnet: ???
+    dns1: ???
+    dns2: ???
+  output_power: 20.5dB
+
+time:
+  - platform: sntp
+    id: sntp_time
+    servers: ???
+
+sensor:
+  - platform: uptime
+    id: uptime_sensor
+    internal: true
+    update_interval: 1s
+  - platform: wifi_signal
+    name: "WiFi Signal Sensor"
+    update_interval: 2s
+  - platform: adc
+    pin: A0
+    name: "Battery"
+    update_interval: 2s   
+    filters:
+      - calibrate_linear:
+        - 0.0 -> 0.0
+        - 0.83 -> 2.58
+
+binary_sensor:
+  - platform: gpio
+    pin: D1
+    name: "Motion Sensor"
+    device_class: motion
+    id: motion_sensor
+
+
+captive_portal:
+
+logger:
+
+ota:
+
+switch:
+  - platform: gpio
+    pin: D2
+    internal: true
+    id: keep_enabled
+    restore_mode: ALWAYS_ON 
+  - platform: gpio
+    pin: D6 
+    internal: true
+    id: enable_controller
+    restore_mode: ALWAYS_ON
+  - platform: gpio
+    pin: D5
+    internal: true
+    id: trigger_spray
+    restore_mode: ALWAYS_ON
+    
+mqtt:
+  broker: ???
+  username: ???
+  password: ???
+  id: mqtt_client
+  birth_message:
+    topic: bathroom/status
+    payload: online
+  will_message:
+    topic: bathroom/status
+    payload: online  
+  on_message:
+    - topic: bathroom/ota_mode
+      payload: 'ON'
+      then:
+        - lambda: !lambda |-
+            id(ota_mode)=1;
+    - topic: bathroom/ota_mode  
+      payload: 'OFF'
+      then:
+        - lambda: !lambda |-
+            id(ota_mode)=0;
+  on_json_message:
+    - topic: bathroom/timestamp
+      then:
+        - lambda: !lambda |-
+            if (x.containsKey("timestamp"))
+               id(timestamp) = x["timestamp"];
+           
